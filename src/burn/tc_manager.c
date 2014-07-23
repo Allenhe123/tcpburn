@@ -33,7 +33,7 @@ check_res_usage(tc_event_timer_t *evt)
 }
 
 void
-burn_release_resources()
+tc_release_resources()
 {
     tc_log_info(LOG_WARN, 0, "sig %d received", tc_over); 
 

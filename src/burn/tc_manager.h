@@ -6,7 +6,7 @@
 
 int  burn_init(tc_event_loop_t *event_loop);
 void burn_over(const int sig);
-void burn_release_resources();
+void tc_release_resources();
 
 #endif   /* ----- #ifndef TC_MANAGER_INCLUDED ----- */
 

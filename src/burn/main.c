@@ -841,7 +841,7 @@ main(int argc, char **argv)
         tc_event_proc_cycle(&event_loop);
     }
 
-    burn_release_resources();
+    tc_release_resources();
 
     return 0;
 }

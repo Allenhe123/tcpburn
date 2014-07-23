@@ -1503,7 +1503,7 @@ tc_interval_dispose(tc_event_timer_t *evt)
 void 
 release_user_resources()
 {
-    int                 i, diff, rst_send_cnt = 0, valid_sess = 0;
+    int                 i, j, diff, rst_send_cnt = 0, valid_sess = 0;
     frame_t            *fr;
     tc_user_t          *u;
     p_sess_entry        e;
@@ -1514,6 +1514,7 @@ release_user_resources()
 
     if (s_table && s_table->num_of_sess > 0) {
         if (user_array) {
+            j = 0;
             for (i = 0; i < size_of_users; i++) {
                 u = user_array + i;
                 if (!(u->state.status & SYN_CONFIRM)) {
@@ -1535,6 +1536,11 @@ release_user_resources()
                 }
                 if (u->state.status && !u->state.over) {
                     send_faked_rst(u);
+                    j++;
+                    if (j == SLP_THRSH_NUM) {
+                        usleep(1);
+                        j = 0;
+                    }
                     rst_send_cnt++;
                 }
             }

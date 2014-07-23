@@ -77,6 +77,7 @@ typedef struct tc_buf_s         tc_buf_t;
 #define SLOT_MAX 256
 #define SLOT_AVG 32 
 
+#define SLP_THRSH_NUM 8
 #define M_CLIENT_IP_NUM 65536
 
 /* max fd number for select */
