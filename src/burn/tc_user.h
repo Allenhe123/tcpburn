@@ -34,20 +34,20 @@ typedef struct sess_data_s {
     unsigned int status:10;
 }sess_data_t, *p_sess_data_t;
 
-typedef struct sess_entry_s{
+typedef struct sess_entry_s {
     uint64_t key;
     sess_data_t data;
     struct sess_entry_s *next;
 }sess_entry_t,*p_sess_entry;
 
-typedef struct sess_table_s{                                                                           
+typedef struct sess_table_s { 
     int size;
     int num_of_sess;
     p_sess_entry *entries;
 }sess_table_t;
 
 
-typedef struct tc_user_state_s{
+typedef struct tc_user_state_s {
     uint32_t status:16;
     uint32_t timer_type:2;
 #if (TC_TOPO)

@@ -23,7 +23,7 @@ static void send_faked_rst(tc_user_t *u);
 static void retransmit(tc_user_t *u, uint32_t cur_ack_seq);
 
 static inline uint32_t 
-supplemental_hash(uint32_t value)                                                                 
+supplemental_hash(uint32_t value) 
 {
     uint32_t h = 0;
     uint32_t tmp1 = value >> 20;
@@ -663,7 +663,7 @@ send_router_info(tc_user_t *u, uint16_t type)
             continue;
         }
         result = true;
-    }                                                                                                             
+    }             
     return result;
 }
 #endif
@@ -800,7 +800,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                 if (utimer_disp(u, DEFAULT_RTO, TYPE_RTO)) {
                     u->state.snd_after_set_rto = 0;
                     timer_set = true;
-                    tc_log_info(LOG_INFO, 0, "special rto:%u", 
+                    tc_log_debug1(LOG_INFO, 0, "special rto:%u", 
                             ntohs(u->src_port));
                 } else {
                     tc_log_info(LOG_INFO, 0, "rto failure:%u", 
@@ -815,7 +815,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                             ntohs(u->src_port));
                 }    
             }
-        }    
+        } 
 
         if (!(pure_activate && u->state.timeout_set)) {
             u->state.timeout_set = 0;
@@ -823,7 +823,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                 exp_h_ack_seq = ntohl(u->exp_ack_seq);
                 if (after(exp_h_ack_seq, u->last_snd_ack_seq)) {
                     utimer_disp(u, u->rtt, TYPE_DELAY_ACK);
-                    tc_log_info(LOG_INFO, 0, "try to set delay ack timer :%u",
+                    tc_log_debug1(LOG_INFO, 0, "try to set delay ack timer:%u",
                             ntohs(u->src_port));
                 } else if (u->orig_frame != NULL) {
                     if (!u->state.resp_waiting) {
@@ -843,7 +843,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
         }
     } else {
         tc_log_info(LOG_ERR, 0, "sesson already deleted:%llu", ev); 
-    }    
+    } 
 }
 
 
@@ -868,7 +868,7 @@ utimer_disp(tc_user_t *u, int lty, int type)
         tc_log_debug2(LOG_INFO, 0, "add timer, ev:%llu,p:%u", &u->ev, 
                     ntohs(u->src_port)); 
         return true;
-    }    
+    } 
 }
 
 
@@ -927,7 +927,8 @@ process_packet(tc_user_t *u, unsigned char *frame)
             h_ack = ntohl(tcp->ack_seq);
             h_last_ack = ntohl(u->history_last_ack_seq);
             if (after(h_ack, h_last_ack)) {
-                tc_log_info(LOG_DEBUG, 0, "server resp first, wait, last ack:%u, cur ack:%u, p:%u", 
+                tc_log_debug3(LOG_DEBUG, 0, 
+                        "server resp first, wait, lack:%u, ack:%u, p:%u", 
                         h_ack, h_last_ack, ntohs(u->src_port));
                 u->state.resp_waiting = 1;
                 return false;
@@ -1154,7 +1155,7 @@ retransmit(tc_user_t *u, uint32_t cur_ack_seq)
             break;
         }
 
-        if (!unack_frame->has_payload) {
+        if (!unack_frame->has_payload && next != NULL) {
             unack_frame = next;
             next = unack_frame->next;
             continue;

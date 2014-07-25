@@ -5,7 +5,7 @@
 
 
 #define TCP_HDR_LEN(tcph) (tcph->doff << 2)
-#define IP_HDR_LEN(iph) (iph->ihl << 2)                                                                 
+#define IP_HDR_LEN(iph) (iph->ihl << 2) 
 #define EXTRACT_32BITS(p)   ((uint32_t)ntohl(*(uint32_t *)(p)))
 
 #define TCP_PAYLOAD_LENGTH(iph, tcph) \

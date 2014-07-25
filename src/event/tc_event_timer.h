@@ -64,10 +64,10 @@ tc_event_update_timer(tc_event_timer_t *ev, tc_msec_t timer)
 }
 
 static inline tc_event_timer_t* 
-tc_event_add_timer(tc_pool_t *pool, tc_event_timer_t *ev, tc_msec_t timer, void *data, 
-        tc_event_timer_handler_pt handler)
+tc_event_add_timer(tc_pool_t *pool, tc_event_timer_t *ev, tc_msec_t timer, 
+        void *data, tc_event_timer_handler_pt handler)
 {
-    tc_msec_t         key;
+    tc_msec_t  key;
 
     if (ev == NULL && pool != NULL) {
         ev = (tc_event_timer_t *) tc_palloc(pool, sizeof(tc_event_timer_t));
