@@ -9,13 +9,15 @@ typedef struct frame_s {
     struct frame_s *prev;
     unsigned char  *frame_data;
     uint32_t        seq;
+    unsigned int    time_diff:20;
     unsigned int    belong_to_the_same_req:1;
+    unsigned int    has_payload:1;
     unsigned int    frame_len:17;
-    unsigned int    time_diff:14;
 }frame_t;
 
 typedef struct sess_data_s {
     frame_t *first_frame;
+    frame_t *first_payload_frame;
     frame_t *last_frame;
     long     first_pcap_time;
     long     last_pcap_time;
@@ -61,6 +63,7 @@ typedef struct tc_user_state_s{
     uint32_t last_ack_recorded:1;
     uint32_t evt_added:1;
     uint32_t set_rto:1;
+    uint32_t already_retransmit_syn:1;
     uint32_t timeout_set:1;
     uint32_t snd_after_set_rto:1;
 }tc_user_state_t;
@@ -130,6 +133,7 @@ typedef struct tc_stat_s {
     uint64_t active_conn_cnt; 
     uint64_t syn_sent_cnt; 
     uint64_t retransmit_cnt; 
+    uint64_t retransmit_syn_cnt; 
     uint64_t packs_sent_cnt; 
     uint64_t cont_sent_cnt; 
     uint64_t orig_clt_packs_cnt; 

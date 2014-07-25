@@ -15,8 +15,8 @@ static tc_pool_t        *g_pool = NULL;
 static tc_user_index_t  *user_index_array = NULL;
 static tc_user_t        *user_array       = NULL;
 static sess_table_t     *s_table          = NULL;
-
 static bool utimer_disp(tc_user_t *u, int lty, int type);
+static bool process_packet(tc_user_t *u, unsigned char *frame);
 static bool process_user_packet(tc_user_t *u);
 static void send_faked_ack(tc_user_t *u);
 static void send_faked_rst(tc_user_t *u);
@@ -539,11 +539,14 @@ record_session_over(tc_user_t *u)
 
 
 static bool
-send_stop(tc_user_t *u) 
+send_stop(tc_user_t *u, bool recent_sent) 
 {
     int       send_diff;
     long      app_resp_diff;
     uint32_t  srv_sk_buf_s;
+
+    tc_log_debug2(LOG_DEBUG, 0, "state:%d,p:%d", 
+            u->state.status, ntohs(u->src_port));
 
     if (u->state.over) {
         tc_log_debug1(LOG_DEBUG, 0, "sess is over:%d", 
@@ -560,9 +563,18 @@ send_stop(tc_user_t *u)
 
     if (u->state.status & SYN_SENT) {
         if (!(u->state.status & SYN_CONFIRM)) {
-            tc_log_debug1(LOG_DEBUG, 0, "client wait server handshake:%d", 
+            if (!recent_sent && !u->state.already_retransmit_syn) {
+                tc_log_debug1(LOG_DEBUG, 0, "retransmit syn:%d", 
                     ntohs(u->src_port));
-            return true;
+                tc_stat.retransmit_syn_cnt++;
+                u->state.already_retransmit_syn = 1;
+                u->orig_frame = u->orig_sess->first_frame;
+                return false;
+            } else {
+                tc_log_debug1(LOG_DEBUG, 0, "wait syn ack:%d", 
+                        ntohs(u->src_port));
+                return true;
+            }
         }
     }
 
@@ -763,6 +775,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
         if (u->state.over) {
             return;
         }
+        u->state.set_rto = 0;
         tc_log_debug2(LOG_INFO, 0, "timer type:%u, ev:%llu", 
                 u->state.timer_type, ev); 
         if (u->state.timer_type == TYPE_DELAY_ACK) {
@@ -774,24 +787,32 @@ tc_lantency_ctl(tc_event_timer_t *ev)
             }
         } else if (u->state.timer_type == TYPE_ACT) {
             if (!u->state.timeout_set) {
-                process_user_packet(u);
                 pure_activate = true;
+                process_user_packet(u);
             } else {
                 send_faked_rst(u);
                 u->state.over = 1;
-                tc_log_debug1(LOG_INFO, 0, "timeout session:%u", 
+                tc_log_info(LOG_INFO, 0, "timeout session:%u", 
                         ntohs(u->src_port));
             }
         } else if (u->state.timer_type == TYPE_RTO) {
             if (u->state.snd_after_set_rto) {
-                utimer_disp(u, DEFAULT_RTO, TYPE_RTO);
-                u->state.snd_after_set_rto = 0;
-                timer_set = true;
+                if (utimer_disp(u, DEFAULT_RTO, TYPE_RTO)) {
+                    u->state.snd_after_set_rto = 0;
+                    timer_set = true;
+                    tc_log_info(LOG_INFO, 0, "special rto:%u", 
+                            ntohs(u->src_port));
+                } else {
+                    tc_log_info(LOG_INFO, 0, "rto failure:%u", 
+                            ntohs(u->src_port));
+                }
             } else {
-                u->state.set_rto = 0;
-                if (before(u->last_ack_seq, u->exp_seq)) {
+                if (!(u->state.status & SYN_CONFIRM)) {
+                    process_user_packet(u);
+                } else if (before(u->last_ack_seq, u->exp_seq)) {
                     retransmit(u, u->last_ack_seq);
-                    tc_log_debug1(LOG_INFO, 0, "rto:%u", ntohs(u->src_port));
+                    tc_log_info(LOG_INFO, 0, "rto retrans:%u", 
+                            ntohs(u->src_port));
                 }    
             }
         }    
@@ -802,15 +823,21 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                 exp_h_ack_seq = ntohl(u->exp_ack_seq);
                 if (after(exp_h_ack_seq, u->last_snd_ack_seq)) {
                     utimer_disp(u, u->rtt, TYPE_DELAY_ACK);
+                    tc_log_info(LOG_INFO, 0, "try to set delay ack timer :%u",
+                            ntohs(u->src_port));
                 } else if (u->orig_frame != NULL) {
-                    lantency = u->orig_frame->time_diff;
-                    if (lantency < u->rtt) {
-                        lantency = u->rtt;
+                    if (!u->state.resp_waiting) {
+                        lantency = u->orig_frame->time_diff;
+                        if (lantency < u->rtt) {
+                            lantency = u->rtt;
+                        }
+
+                        if (lantency < MIN_ACT_TIME_INTERVAL) {
+                            lantency = MIN_ACT_TIME_INTERVAL;
+                        }
+
+                        utimer_disp(u, lantency, TYPE_ACT);
                     }
-                    if (u->state.resp_waiting) {
-                        lantency = lantency > 1000 ? lantency : 1000;
-                    }
-                    utimer_disp(u, lantency, TYPE_ACT);
                 }
             }
         }
@@ -845,6 +872,22 @@ utimer_disp(tc_user_t *u, int lty, int type)
 }
 
 
+static void
+add_rto_timer_when_sending_packets(tc_user_t *u) 
+{
+    if (u->state.set_rto) {
+        u->state.snd_after_set_rto = 1; 
+    } else {
+        if (utimer_disp(u, DEFAULT_RTO, TYPE_RTO)) {
+            u->state.set_rto = 1; 
+            u->state.snd_after_set_rto = 0; 
+        } else {
+            tc_log_info(LOG_INFO, 0, "set rto timer failure"); 
+        }
+    }
+}
+
+
 static bool 
 process_packet(tc_user_t *u, unsigned char *frame) 
 {
@@ -867,7 +910,7 @@ process_packet(tc_user_t *u, unsigned char *frame)
     if (u->dst_port == 0) {
         test = get_test_pair(&(clt_settings.transfer), ip->daddr, tcp->dest);
         if (test == NULL) {
-            tc_log_info(LOG_NOTICE, 0, " test null:%u", ntohs(tcp->dest));
+            tc_log_info(LOG_NOTICE, 0, "test null:%u", ntohs(tcp->dest));
             tc_log_trace(LOG_WARN, 0, TO_BAKEND_FLAG, ip, tcp);
             return false;
         }
@@ -884,8 +927,8 @@ process_packet(tc_user_t *u, unsigned char *frame)
             h_ack = ntohl(tcp->ack_seq);
             h_last_ack = ntohl(u->history_last_ack_seq);
             if (after(h_ack, h_last_ack)) {
-                tc_log_debug1(LOG_DEBUG, 0, "server resp first, wait, p:%u", 
-                        ntohs(u->src_port));
+                tc_log_info(LOG_DEBUG, 0, "server resp first, wait, last ack:%u, cur ack:%u, p:%u", 
+                        h_ack, h_last_ack, ntohs(u->src_port));
                 u->state.resp_waiting = 1;
                 return false;
             }
@@ -908,16 +951,20 @@ process_packet(tc_user_t *u, unsigned char *frame)
     if (tcp->syn) {
         tc_log_debug2(LOG_INFO, 0, "rtt:%ld, p:%u", u->rtt, ntohs(u->src_port));
         tc_stat.syn_sent_cnt++;
+        if (!(u->state.status & SYN_SENT)) {
 #if (!TC_SINGLE)
-        if (!send_router_info(u, CLIENT_ADD)) {
-            return false;
-        }
+            if (!send_router_info(u, CLIENT_ADD)) {
+                return false;
+            }
 #endif
+            add_rto_timer_when_sending_packets(u);
+        }
 #if (TC_TOPO)
         u->start_time = tc_time();
 #endif
         u->state.last_ack_recorded = 0;
-        u->state.status  |= SYN_SENT;
+        u->state.status = SYN_SENT;
+
     } else if (tcp->fin) {
         tc_stat.fin_sent_cnt++;
         u->state.status  |= CLIENT_FIN;
@@ -933,13 +980,7 @@ process_packet(tc_user_t *u, unsigned char *frame)
         tc_stat.cont_sent_cnt++;
         u->state.status |= SEND_REQ;
         u->exp_seq = u->exp_seq + cont_len;
-        if (u->state.set_rto) {
-            u->state.snd_after_set_rto = 1; 
-        } else {
-            utimer_disp(u, DEFAULT_RTO, TYPE_RTO);
-            u->state.set_rto = 1; 
-            u->state.snd_after_set_rto = 0; 
-        }  
+        add_rto_timer_when_sending_packets(u);
     }
     if (u->state.timestamped) {
         update_timestamp(u, tcp);
@@ -981,7 +1022,7 @@ process_user_packet(tc_user_t *u)
 {
     unsigned char  *frame;
 
-    if (send_stop(u)) {
+    if (send_stop(u, false)) {
         return false;
     }
 
@@ -997,7 +1038,7 @@ process_user_packet(tc_user_t *u)
         u->total_packets_sent++;
         u->orig_frame = u->orig_frame->next;
 
-        if (send_stop(u)) {
+        if (send_stop(u, true)) {
             break;
         }
         tc_log_debug1(LOG_INFO, 0, "check resp wait:%u", ntohs(u->src_port));
@@ -1097,22 +1138,33 @@ send_faked_ack(tc_user_t *u)
 static void
 retransmit(tc_user_t *u, uint32_t cur_ack_seq)
 {
-    frame_t  *unack_frame, *next;
+    frame_t        *unack_frame, *next;
+    unsigned char  *frame;
 
     unack_frame = u->orig_unack_frame;
     if (unack_frame == NULL) {
         return;
     }
 
-    next = unack_frame->next;
+    frame = clt_settings.frame;
+    next  = unack_frame->next;
+
     while (true) {
         if (unack_frame == u->orig_frame) {
             break;
         }
+
+        if (!unack_frame->has_payload) {
+            unack_frame = next;
+            next = unack_frame->next;
+            continue;
+        }
+
         if (unack_frame->seq == cur_ack_seq) {
             tc_log_debug1(LOG_DEBUG, 0, "packets retransmitted:%u", 
                     ntohs(u->src_port));
-            process_packet(u, unack_frame->frame_data);
+            memcpy(frame, unack_frame->frame_data, unack_frame->frame_len);
+            process_packet(u, frame);
             tc_stat.retransmit_cnt++;
             break;
         } else if (before(unack_frame->seq, cur_ack_seq) && next != NULL &&
@@ -1121,7 +1173,8 @@ retransmit(tc_user_t *u, uint32_t cur_ack_seq)
             tc_log_debug1(LOG_DEBUG, 0, "packets partly retransmitted:%u", 
                     ntohs(u->src_port));
             tc_stat.retransmit_cnt++;
-            process_packet(u, unack_frame->frame_data);
+            memcpy(frame, unack_frame->frame_data, unack_frame->frame_len);
+            process_packet(u, frame);
             break;
         } else if (before(unack_frame->seq, cur_ack_seq)) {
             unack_frame = next;
@@ -1295,6 +1348,8 @@ process_outgress(unsigned char *packet)
         if (u->last_seq == seq && u->last_ack_seq == ack_seq) {
             u->fast_retransmit_cnt++;
             if (u->fast_retransmit_cnt == 3) {
+                tc_log_info(LOG_INFO, 0, "fast retrans:%u", 
+                            ntohs(u->src_port));
                 retransmit(u, ack_seq);
                 return;
             }
@@ -1347,8 +1402,10 @@ process_outgress(unsigned char *packet)
 
             } else {
                 send_faked_ack(u);
-                tc_log_debug1(LOG_DEBUG, 0, "syn, but already syn received:%u",
+                u->orig_frame = u->orig_sess->first_payload_frame;
+                tc_log_info(LOG_DEBUG, 0, "syn, but already syn received:%u",
                     ntohs(u->src_port));
+                utimer_disp(u, u->rtt, TYPE_ACT);
             }
         } else if (tcp->fin) {
             tc_log_debug1(LOG_DEBUG, 0, "recv fin from back:%u", 
@@ -1483,8 +1540,10 @@ output_stat()
     tc_log_info(LOG_NOTICE, 0, "reject:%llu, reset recv:%llu,fin recv:%llu",
             tc_stat.conn_reject_cnt, tc_stat.rst_recv_cnt, 
             tc_stat.fin_recv_cnt);
-    tc_log_info(LOG_NOTICE, 0, "reset sent:%llu, fin:%llu, retrans:%llu",
-            tc_stat.rst_sent_cnt, tc_stat.fin_sent_cnt, tc_stat.retransmit_cnt);
+    tc_log_info(LOG_NOTICE, 0, "reset sent:%llu, fin:%llu",
+            tc_stat.rst_sent_cnt, tc_stat.fin_sent_cnt);
+    tc_log_info(LOG_NOTICE, 0, "retrans:%llu, syn retrans:%llu",
+            tc_stat.retransmit_cnt, tc_stat.retransmit_syn_cnt);
     tc_log_info(LOG_NOTICE, 0, "conns:%llu,resp packs:%llu,c-resp packs:%llu",
             tc_stat.conn_cnt, tc_stat.resp_cnt, tc_stat.resp_cont_cnt);
     tc_log_info(LOG_NOTICE, 0, 
@@ -1503,7 +1562,7 @@ tc_interval_dispose(tc_event_timer_t *evt)
 void 
 release_user_resources()
 {
-    int                 i, j, diff, rst_send_cnt = 0, valid_sess = 0;
+    int                 i, j, k, diff, rst_send_cnt = 0, valid_sess = 0, thrsh;
     frame_t            *fr;
     tc_user_t          *u;
     p_sess_entry        e;
@@ -1515,6 +1574,8 @@ release_user_resources()
     if (s_table && s_table->num_of_sess > 0) {
         if (user_array) {
             j = 0;
+            k = 0;
+            thrsh = SLP_THRSH_NUM;
             for (i = 0; i < size_of_users; i++) {
                 u = user_array + i;
                 if (!(u->state.status & SYN_CONFIRM)) {
@@ -1537,13 +1598,34 @@ release_user_resources()
                 if (u->state.status && !u->state.over) {
                     send_faked_rst(u);
                     j++;
-                    if (j == SLP_THRSH_NUM) {
+                    k++;
+                    if (j == thrsh) {
                         usleep(1);
                         j = 0;
                     }
+
+                    if (k == BREAK_NUM) {
+                        tc_time_update();
+                        tc_log_info(LOG_INFO, 0, "sleep a sec when recycling");
+                        sleep(1);
+                        k = 0;
+                    }
                     rst_send_cnt++;
                 }
+
+                if (size_of_users >= MILLION) {
+                    if (i == HALF_MILLION) {
+                        thrsh = thrsh >> 1;
+                        thrsh = thrsh ? thrsh : 1;
+                    } else if (i == MILLION) {
+                        thrsh = 1;
+                    }
+                }
             }
+             
+            tc_time_update();
+            tc_log_info(LOG_INFO, 0, "last sleep a sec when recycling");
+            sleep(1);
         }
 
         tc_log_info(LOG_NOTICE, 0, "send %d resets to release tcp resources", 

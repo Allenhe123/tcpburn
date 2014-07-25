@@ -77,7 +77,7 @@ typedef struct tc_buf_s         tc_buf_t;
 #define SLOT_MAX 256
 #define SLOT_AVG 32 
 
-#define SLP_THRSH_NUM 8
+#define SLP_THRSH_NUM 4
 #define M_CLIENT_IP_NUM 65536
 
 /* max fd number for select */
@@ -108,7 +108,17 @@ typedef struct tc_buf_s         tc_buf_t;
 #define TYPE_RTO 2
 #define TYPE_ACT 3
 
+#if (TC_COMET)
+#define MIN_ACT_TIME_INTERVAL 60000
+#define DEFAULT_RTO 1000
+#else
 #define DEFAULT_RTO 100
+#define MIN_ACT_TIME_INTERVAL 1000
+#endif
+
+#define BREAK_NUM 50000
+#define HALF_MILLION 500000
+#define MILLION 1000000
 
 #define TCP_HEADER_DOFF_MIN_VALUE 5
 #define TCP_HEADER_DOFF_MSS_VALUE 6

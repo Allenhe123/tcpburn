@@ -105,6 +105,7 @@ record_packet(uint64_t key, unsigned char *frame, int frame_len, uint32_t seq,
         fr->frame_len = frame_len;
 
         fr->seq = seq;
+        fr->has_payload = 0;
         entry = (p_sess_entry) alloc_pool_mem(sizeof(sess_entry_t));
         if (entry == NULL) {
             tc_log_info(LOG_WARN, 0, "calloc error for sess_entry_t");
@@ -120,6 +121,7 @@ record_packet(uint64_t key, unsigned char *frame, int frame_len, uint32_t seq,
         sess->rtt = clt_settings.pcap_time;
         sess->rtt_init = 1;
         sess->first_frame = fr;
+        sess->first_payload_frame = NULL;
         sess->frames = 1;
         sess->last_frame = fr;
         sess->last_ack_seq = ack_seq;
@@ -154,10 +156,8 @@ record_packet(uint64_t key, unsigned char *frame, int frame_len, uint32_t seq,
             tc_log_debug1(LOG_INFO, 0, "rtt:%ld", sess->rtt);
         }
 
-        if (cont_len > 0) {
-            sess->has_req = 1;
-        } else if ((sess->status & SEND_REQ) && 
-                (!(sess->status & CLIENT_FIN))) 
+        if (cont_len == 0 && ((sess->status & SEND_REQ) && 
+                (!(sess->status & CLIENT_FIN))))
         {
             tc_log_debug0(LOG_DEBUG, 0, "dropped");
             return;
@@ -196,9 +196,16 @@ record_packet(uint64_t key, unsigned char *frame, int frame_len, uint32_t seq,
 
             sess->last_pcap_time = clt_settings.pcap_time;
 
-            if (sess->last_ack_seq == ack_seq && cont_len > 0) {
-                fr->belong_to_the_same_req = 1;
-                tc_log_debug0(LOG_DEBUG, 0, "belong to the same req");
+            if (cont_len > 0) {
+                if (sess->first_payload_frame == NULL) {
+                    sess->first_payload_frame = fr;
+                }
+                if (sess->last_ack_seq == ack_seq) {
+                    fr->belong_to_the_same_req = 1;
+                    tc_log_debug0(LOG_DEBUG, 0, "belong to the same req");
+                }
+                fr->has_payload = 1;
+                sess->has_req = 1;
             }
             sess->last_ack_seq = ack_seq;
         }

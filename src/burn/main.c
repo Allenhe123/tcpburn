@@ -263,7 +263,7 @@ static void
 output_for_debug()
 {
     /* print out version info */
-    tc_log_info(LOG_NOTICE, 0, "burn version:%s", VERSION);
+    tc_log_info(LOG_NOTICE, 0, "tcpburn version:%s", VERSION);
     /* print out target info */
     tc_log_info(LOG_NOTICE, 0, "target:%s", clt_settings.raw_transfer);
 
