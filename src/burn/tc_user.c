@@ -140,6 +140,8 @@ tc_init_sess_for_users()
         if (prev != NULL && u->orig_sess->delayed) {
             u->state.delayed = 1;
             u->topo_prev = prev;
+            tc_log_debug2(LOG_INFO, 0, "cur:%llu, parent sess:%llu",
+                    u->key, u->topo_prev->key);
         }
 
         tc_stat.orig_clt_packs_cnt += u->orig_sess->frames;
@@ -1477,14 +1479,18 @@ could_start_sess(tc_user_t *u)
             return false;
         }
 
-        diff1 = tc_time() - u->topo_prev->start_time;
+        diff1 = (tc_time() - u->topo_prev->start_time) * 1000;
         diff2 = u->topo_prev->orig_sess->first_pcap_time;
         diff2 = u->orig_sess->first_pcap_time - diff2;
 
         if (diff1  >= diff2) {
+            tc_log_debug2(LOG_INFO, 0, "cur:%llu activated, parent sess:%llu",
+                    u->key, u->topo_prev->key);
             return true;
         }
 
+        tc_log_debug4(LOG_INFO, 0, "cur:%llu unact, prt:%llu, df1:%d, df2:%d",
+                    u->key, u->topo_prev->key, diff1, diff2);
         return false;
 
     } else {
