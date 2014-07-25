@@ -283,7 +283,7 @@ tc_retrieve_active_user()
                 if (record_time != cur) {
                     base_user_seq += speed;
                     record_time = cur;
-                    tc_log_info(LOG_NOTICE, 0, "change record time");
+                    tc_log_debug0(LOG_NOTICE, 0, "change record time");
                     total = total + 1;
                     if (total == size_of_users) {
                         init_phase = false;
@@ -792,7 +792,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
             } else {
                 send_faked_rst(u);
                 u->state.over = 1;
-                tc_log_info(LOG_INFO, 0, "timeout session:%u", 
+                tc_log_debug1(LOG_INFO, 0, "timeout session:%u", 
                         ntohs(u->src_port));
             }
         } else if (u->state.timer_type == TYPE_RTO) {
@@ -811,7 +811,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                     process_user_packet(u);
                 } else if (before(u->last_ack_seq, u->exp_seq)) {
                     retransmit(u, u->last_ack_seq);
-                    tc_log_info(LOG_INFO, 0, "rto retrans:%u", 
+                    tc_log_debug1(LOG_INFO, 0, "rto retrans:%u", 
                             ntohs(u->src_port));
                 }    
             }
@@ -1349,7 +1349,7 @@ process_outgress(unsigned char *packet)
         if (u->last_seq == seq && u->last_ack_seq == ack_seq) {
             u->fast_retransmit_cnt++;
             if (u->fast_retransmit_cnt == 3) {
-                tc_log_info(LOG_INFO, 0, "fast retrans:%u", 
+                tc_log_debug1(LOG_INFO, 0, "fast retrans:%u", 
                             ntohs(u->src_port));
                 retransmit(u, ack_seq);
                 return;
@@ -1404,7 +1404,7 @@ process_outgress(unsigned char *packet)
             } else {
                 send_faked_ack(u);
                 u->orig_frame = u->orig_sess->first_payload_frame;
-                tc_log_info(LOG_DEBUG, 0, "syn, but already syn received:%u",
+                tc_log_debug1(LOG_DEBUG, 0, "syn, but already syn received:%u",
                     ntohs(u->src_port));
                 utimer_disp(u, u->rtt, TYPE_ACT);
             }
@@ -1563,7 +1563,7 @@ tc_interval_dispose(tc_event_timer_t *evt)
 void 
 release_user_resources()
 {
-    int                 i, j, k, diff, rst_send_cnt = 0, valid_sess = 0, thrsh;
+    int                 i, j, k, m, diff, rst_snd_cnt = 0, valid_s = 0, thrsh;
     frame_t            *fr;
     tc_user_t          *u;
     p_sess_entry        e;
@@ -1576,13 +1576,18 @@ release_user_resources()
         if (user_array) {
             j = 0;
             k = 0;
+            m = 0;
             thrsh = SLP_THRSH_NUM;
             for (i = 0; i < size_of_users; i++) {
                 u = user_array + i;
                 if (!(u->state.status & SYN_CONFIRM)) {
-                    targ_addr.sin_addr.s_addr = u->src_addr;
-                    tc_log_info(LOG_NOTICE, 0, "connection fails:%s:%u", 
-                            inet_ntoa(targ_addr.sin_addr), ntohs(u->src_port));
+                    m++;
+                    if (m < 1024) {
+                        targ_addr.sin_addr.s_addr = u->src_addr;
+                        tc_log_info(LOG_NOTICE, 0, "conn fails:%s:%u", 
+                                inet_ntoa(targ_addr.sin_addr), 
+                                ntohs(u->src_port));
+                    }
                 }
                    
                 diff = u->orig_sess->frames - u->total_packets_sent;
@@ -1611,7 +1616,7 @@ release_user_resources()
                         sleep(1);
                         k = 0;
                     }
-                    rst_send_cnt++;
+                    rst_snd_cnt++;
                 }
 
                 if (size_of_users >= MILLION) {
@@ -1630,7 +1635,7 @@ release_user_resources()
         }
 
         tc_log_info(LOG_NOTICE, 0, "send %d resets to release tcp resources", 
-                rst_send_cnt);
+                rst_snd_cnt);
     }
 
     if (s_table) {
@@ -1639,13 +1644,13 @@ release_user_resources()
             while (e) {
                 fr = e->data.first_frame;
                 if (e->data.has_req) {
-                    valid_sess++;
+                    valid_s++;
                 }
                 e = e->next;
             }
         }
 
-        tc_log_info(LOG_NOTICE, 0, "valid sess:%d", valid_sess);
+        tc_log_info(LOG_NOTICE, 0, "valid sess:%d", valid_s);
     }
 
     s_table = NULL;

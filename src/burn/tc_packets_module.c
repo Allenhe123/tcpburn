@@ -246,7 +246,7 @@ dispose_packet(unsigned char *frame, int frame_len, int ip_recv_len)
     size_tcp    = tcp->doff << 2;
 
     if (size_tcp < 20) {
-        tc_log_info(LOG_WARN, 0, "Invalid TCP header len: %d bytes", size_tcp);
+        tc_log_info(LOG_INFO, 0, "Invalid TCP header len: %d bytes", size_tcp);
         return TC_ERROR;
     }
 
