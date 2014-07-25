@@ -988,6 +988,10 @@ process_packet(tc_user_t *u, unsigned char *frame, bool hist_record)
         u->state.status |= SEND_REQ;
         u->exp_seq = u->exp_seq + cont_len;
         add_rto_timer_when_sending_packets(u);
+    } else {
+        if ((u->state.status & SYN_CONFIRM) && (u->state.status < SEND_REQ)) {
+            u->state.status |= SYN_ACK;
+        }
     }
     if (u->state.timestamped) {
         update_timestamp(u, tcp);
@@ -1409,7 +1413,7 @@ process_outgress(unsigned char *packet)
 
             } else {
                 tc_log_debug1(LOG_DEBUG, 0, "dup syn:%u", ntohs(u->src_port));
-                if (!u->ev.timer_set) {
+                if (u->state.status & SYN_ACK) {
                     tc_log_debug1(LOG_DEBUG, 0, "third had been sent:%u",
                         ntohs(u->src_port));
                     send_faked_ack(u);
