@@ -16,7 +16,7 @@ static tc_user_index_t  *user_index_array = NULL;
 static tc_user_t        *user_array       = NULL;
 static sess_table_t     *s_table          = NULL;
 static bool utimer_disp(tc_user_t *u, int lty, int type);
-static bool process_packet(tc_user_t *u, unsigned char *frame);
+static bool process_packet(tc_user_t *, unsigned char *, bool);
 static bool process_user_packet(tc_user_t *u);
 static void send_faked_ack(tc_user_t *u);
 static void send_faked_rst(tc_user_t *u);
@@ -891,7 +891,7 @@ add_rto_timer_when_sending_packets(tc_user_t *u)
 
 
 static bool 
-process_packet(tc_user_t *u, unsigned char *frame) 
+process_packet(tc_user_t *u, unsigned char *frame, bool hist_record) 
 {
     bool                    result;
     uint16_t                size_ip, size_tcp, tot_len, cont_len;
@@ -940,7 +940,11 @@ process_packet(tc_user_t *u, unsigned char *frame)
 
     ip->saddr = u->src_addr;
     tcp->source = u->src_port;
-    u->history_last_ack_seq = tcp->ack_seq;
+
+    if (hist_record) {
+        u->history_last_ack_seq = tcp->ack_seq;
+    }
+
     u->state.last_ack_recorded = 1;
     tcp->ack_seq = u->exp_ack_seq;
     u->last_snd_ack_seq = ntohl(tcp->ack_seq);
@@ -1037,7 +1041,7 @@ process_user_packet(tc_user_t *u)
         }
 
         memcpy(frame, u->orig_frame->frame_data, u->orig_frame->frame_len);
-        process_packet(u, frame);
+        process_packet(u, frame, true);
         u->total_packets_sent++;
         u->orig_frame = u->orig_frame->next;
 
@@ -1096,7 +1100,7 @@ send_faked_rst(tc_user_t *u)
     tcp->rst     = 1;
     tcp->doff    = TCP_HEADER_DOFF_MIN_VALUE;
 
-    process_packet(u, frame);
+    process_packet(u, frame, false);
 }
 
 
@@ -1134,7 +1138,7 @@ send_faked_ack(tc_user_t *u)
         tcp->doff    = TCP_HEADER_DOFF_MIN_VALUE;
     }
 
-    process_packet(u, frame);
+    process_packet(u, frame, false);
 }
 
 
@@ -1167,7 +1171,7 @@ retransmit(tc_user_t *u, uint32_t cur_ack_seq)
             tc_log_debug1(LOG_DEBUG, 0, "packets retransmitted:%u", 
                     ntohs(u->src_port));
             memcpy(frame, unack_frame->frame_data, unack_frame->frame_len);
-            process_packet(u, frame);
+            process_packet(u, frame, false);
             tc_stat.retransmit_cnt++;
             break;
         } else if (before(unack_frame->seq, cur_ack_seq) && next != NULL &&
@@ -1177,7 +1181,7 @@ retransmit(tc_user_t *u, uint32_t cur_ack_seq)
                     ntohs(u->src_port));
             tc_stat.retransmit_cnt++;
             memcpy(frame, unack_frame->frame_data, unack_frame->frame_len);
-            process_packet(u, frame);
+            process_packet(u, frame, false);
             break;
         } else if (before(unack_frame->seq, cur_ack_seq)) {
             unack_frame = next;
@@ -1404,11 +1408,14 @@ process_outgress(unsigned char *packet)
                 utimer_disp(u, u->rtt, TYPE_DELAY_ACK);
 
             } else {
-                send_faked_ack(u);
-                u->orig_frame = u->orig_sess->first_payload_frame;
-                tc_log_debug1(LOG_DEBUG, 0, "syn, but already syn received:%u",
-                    ntohs(u->src_port));
-                utimer_disp(u, u->rtt, TYPE_ACT);
+                tc_log_debug1(LOG_DEBUG, 0, "dup syn:%u", ntohs(u->src_port));
+                if (!u->ev.timer_set) {
+                    tc_log_debug1(LOG_DEBUG, 0, "third had been sent:%u",
+                        ntohs(u->src_port));
+                    send_faked_ack(u);
+                    u->orig_frame = u->orig_sess->first_payload_frame;
+                    utimer_disp(u, u->rtt, TYPE_ACT);
+                }
             }
         } else if (tcp->fin) {
             tc_log_debug1(LOG_DEBUG, 0, "recv fin from back:%u", 
