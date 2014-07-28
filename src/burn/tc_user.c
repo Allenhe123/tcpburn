@@ -108,6 +108,30 @@ tc_add_sess(p_sess_entry entry)
 }
 
 
+static void 
+init_frame_seq_for_sess()
+{
+    int           i, seq;
+    frame_t      *fr;
+    p_sess_entry  e;
+
+    if (s_table) {
+        for (i = 0; i < s_table->size; i++) {
+            e = s_table->entries[i];
+            while (e) {
+                seq = 0;
+                fr = e->data.first_frame;
+                while (fr) {
+                    fr->frame_seq = seq++;
+                    fr = fr->next;
+                }
+                e = e->next;
+            }
+        }
+    }
+}
+
+
 #if (TC_TOPO) 
 static void
 tc_init_sess_for_users()
@@ -165,7 +189,7 @@ tc_init_sess_for_users()
     tc_user_t    *u;
     tc_pool_t    *pool;
     sess_data_t  *sess;
-    p_sess_entry  e = NULL, *aux_s_array;
+    p_sess_entry  e, *aux_s_array;
 
     if (s_table->num_of_sess == 0) {
         tc_log_info(LOG_ERR, 0, "no sess for replay");
@@ -519,6 +543,7 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
 
     tc_destroy_pool(pool);
 
+    init_frame_seq_for_sess();
     tc_init_sess_for_users();
 
     tc_log_info(LOG_INFO, 0, "leave tc_build_users");
@@ -1217,6 +1242,7 @@ update_ack_packets(tc_user_t *u, uint32_t cur_ack_seq)
         if (unack_frame == u->orig_frame) {
             break;
         }
+        
         if (next != NULL) {
             if (next->seq == cur_ack_seq) {
                 u->orig_unack_frame = unack_frame->next;
@@ -1241,6 +1267,18 @@ update_ack_packets(tc_user_t *u, uint32_t cur_ack_seq)
             }
             u->orig_unack_frame = unack_frame;
             break;
+        }
+    }
+
+    if (u->orig_frame) {
+        if (u->orig_unack_frame) {
+            if (u->orig_unack_frame->frame_seq > u->orig_frame->frame_seq) {
+                u->orig_frame = u->orig_unack_frame;
+                tc_log_debug1(LOG_DEBUG, 0, "rewind slide win:%u", 
+                        ntohs(u->src_port));
+            }
+        } else {
+            u->orig_frame = NULL;
         }
     }
 }
@@ -1581,7 +1619,6 @@ void
 release_user_resources()
 {
     int                 i, j, k, m, diff, rst_snd_cnt = 0, valid_s = 0, thrsh;
-    frame_t            *fr;
     tc_user_t          *u;
     p_sess_entry        e;
     struct sockaddr_in  targ_addr;
@@ -1659,7 +1696,6 @@ release_user_resources()
         for (i = 0; i < s_table->size; i++) {
             e = s_table->entries[i];
             while (e) {
-                fr = e->data.first_frame;
                 if (e->data.has_req) {
                     valid_s++;
                 }

@@ -9,6 +9,7 @@ typedef struct frame_s {
     struct frame_s *prev;
     unsigned char  *frame_data;
     uint32_t        seq;
+    uint32_t        frame_seq;
     unsigned int    time_diff:20;
     unsigned int    belong_to_the_same_req:1;
     unsigned int    has_payload:1;

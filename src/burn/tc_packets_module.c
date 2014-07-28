@@ -65,7 +65,6 @@ append_by_order(sess_data_t *s, frame_t *added_frame)
     if (last_changed) {
         s->last_frame = added_frame;
     }
-
 }
 
 
