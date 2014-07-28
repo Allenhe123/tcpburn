@@ -1214,13 +1214,13 @@ update_ack_packets(tc_user_t *u, uint32_t cur_ack_seq)
 
     if (u->orig_frame) {
         while (after(cur_ack_seq, u->orig_frame->seq)) {
+            tc_log_debug1(LOG_DEBUG, 0, "rewind slide win:%u", 
+                ntohs(u->src_port));
             u->orig_frame = u->orig_frame->next;
             if (!u->orig_frame) {
                 break;
             }
         }
-        tc_log_debug1(LOG_DEBUG, 0, "rewind slide win:%u", 
-                ntohs(u->src_port));
     }
 
     next = unack_frame->next;
