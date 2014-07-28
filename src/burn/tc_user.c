@@ -108,30 +108,6 @@ tc_add_sess(p_sess_entry entry)
 }
 
 
-static void 
-init_frame_seq_for_sess()
-{
-    int           i, seq;
-    frame_t      *fr;
-    p_sess_entry  e;
-
-    if (s_table) {
-        for (i = 0; i < s_table->size; i++) {
-            e = s_table->entries[i];
-            while (e) {
-                seq = 0;
-                fr = e->data.first_frame;
-                while (fr) {
-                    fr->frame_seq = seq++;
-                    fr = fr->next;
-                }
-                e = e->next;
-            }
-        }
-    }
-}
-
-
 #if (TC_TOPO) 
 static void
 tc_init_sess_for_users()
@@ -543,7 +519,6 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
 
     tc_destroy_pool(pool);
 
-    init_frame_seq_for_sess();
     tc_init_sess_for_users();
 
     tc_log_info(LOG_INFO, 0, "leave tc_build_users");
@@ -1237,6 +1212,17 @@ update_ack_packets(tc_user_t *u, uint32_t cur_ack_seq)
         return;
     }
 
+    if (u->orig_frame) {
+        while (after(cur_ack_seq, u->orig_frame->seq)) {
+            u->orig_frame = u->orig_frame->next;
+            if (!u->orig_frame) {
+                break;
+            }
+        }
+        tc_log_debug1(LOG_DEBUG, 0, "rewind slide win:%u", 
+                ntohs(u->src_port));
+    }
+
     next = unack_frame->next;
     while (true) {
         if (unack_frame == u->orig_frame) {
@@ -1270,17 +1256,6 @@ update_ack_packets(tc_user_t *u, uint32_t cur_ack_seq)
         }
     }
 
-    if (u->orig_frame) {
-        if (u->orig_unack_frame) {
-            if (u->orig_unack_frame->frame_seq > u->orig_frame->frame_seq) {
-                u->orig_frame = u->orig_unack_frame;
-                tc_log_debug1(LOG_DEBUG, 0, "rewind slide win:%u", 
-                        ntohs(u->src_port));
-            }
-        } else {
-            u->orig_frame = NULL;
-        }
-    }
 }
 
 
@@ -1403,7 +1378,9 @@ process_outgress(unsigned char *packet)
                 return;
             }
         } else {
-            update_ack_packets(u, ack_seq);
+            if (u->last_ack_seq != ack_seq) {
+                update_ack_packets(u, ack_seq);
+            }
             u->fast_retransmit_cnt = 0;
         }
 
