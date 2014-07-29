@@ -18,6 +18,7 @@ TC_TOPO=NO
 TC_COMBINED=YES
 TC_SINGLE=NO
 TC_COMET=NO
+TC_HIGH_PRESSURE_CHECK=NO
 TC_DEBUG=NO
 TC_DETECT_MEMORY=NO
 
@@ -61,6 +62,7 @@ do
         --disable-combined)              TC_COMBINED=NO            ;;
 
         --with-debug)                    TC_DEBUG=YES              ;;
+        --with-high-pressure-check)      TC_HIGH_PRESSURE_CHECK=YES ;;
         --with-detect-memory)            TC_DETECT_MEMORY=YES      ;;
 
         *)
@@ -91,6 +93,7 @@ cat << END
   --with-cc-opt=OPTIONS              set additional C compiler options
   --with-ld-opt=OPTIONS              set additional linker options
   --with-debug                       enable debug logging
+  --with-high-pressure-check         enable high pressure check 
 
   --comet                            run tcpburn at comet mode
   --single                           run tcpburn at non-distributed mode
@@ -105,7 +108,6 @@ END
 fi
 
 
-TC_CONF_PREFIX=`dirname $TC_CONF_PATH`
 TC_PID_PATH=${TC_PID_PATH:-logs/tcpburn.pid}
 
 if [ ".$TC_ERROR_LOG_PATH" = ".stderr" ]; then

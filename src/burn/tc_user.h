@@ -66,6 +66,10 @@ typedef struct tc_user_state_s {
     uint32_t already_retransmit_syn:1;
     uint32_t timeout_set:1;
     uint32_t snd_after_set_rto:1;
+    uint32_t rewind_af_dup_syn:1;
+#if (TC_HIGH_PRESSURE_CHECK)
+    uint32_t rewind_af_lack:1;
+#endif
 }tc_user_state_t;
 
 

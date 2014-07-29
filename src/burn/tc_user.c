@@ -90,7 +90,7 @@ tc_add_sess(p_sess_entry entry)
 {
     uint32_t h = supplemental_hash((uint32_t) entry->key);
     uint32_t index = table_index(h, s_table->size);
-    p_sess_entry e = NULL, last = NULL;
+    p_sess_entry e, last = NULL;
 
     for(e = s_table->entries[index]; e != NULL; e = e->next) { 
         last = e;
@@ -112,7 +112,7 @@ tc_add_sess(p_sess_entry entry)
 static void
 tc_init_sess_for_users()
 {
-    int             i, index = 0;
+    int             i;
     tc_user_t      *u, *prev;
     p_link_node     ln;
 
@@ -123,7 +123,6 @@ tc_init_sess_for_users()
     }
 
     ln    = NULL;
-    index = 0;
 
     for (i = 0; i < size_of_users; i++) {
         if (ln == NULL) {
@@ -550,6 +549,13 @@ send_stop(tc_user_t *u, bool recent_sent)
     tc_log_debug2(LOG_DEBUG, 0, "state:%d,p:%d", 
             u->state.status, ntohs(u->src_port));
 
+#if (TC_HIGH_PRESSURE_CHECK)
+    if (u->state.rewind_af_dup_syn) {
+        tc_log_info(LOG_WARN, 0, "enter send_stop af rewind:%d",
+                ntohs(u->src_port));
+    }
+#endif
+
     if (u->state.over) {
         tc_log_debug1(LOG_DEBUG, 0, "sess is over:%d", 
                 ntohs(u->src_port));
@@ -558,10 +564,23 @@ send_stop(tc_user_t *u, bool recent_sent)
     }
 
     if (u->orig_frame == NULL) {
+#if (TC_HIGH_PRESSURE_CHECK)
+        if (u->state.rewind_af_dup_syn && !u->state.rewind_af_lack) {
+            tc_log_info(LOG_WARN, 0, "crazy here, orig frame null :%d",
+                    ntohs(u->src_port));
+        }
+#endif
         tc_log_debug1(LOG_DEBUG, 0, "orig frame is null :%d", 
                 ntohs(u->src_port));
         return true;
     }
+
+#if (TC_HIGH_PRESSURE_CHECK)
+    if (u->state.rewind_af_dup_syn) {
+        tc_log_info(LOG_WARN, 0, "check syn retrans af rewind:%d",
+                ntohs(u->src_port));
+    }
+#endif
 
     if (u->state.status & SYN_SENT) {
         if (!(u->state.status & SYN_CONFIRM)) {
@@ -589,6 +608,12 @@ send_stop(tc_user_t *u, bool recent_sent)
     }
 
     if (u->state.resp_waiting) {
+#if (TC_HIGH_PRESSURE_CHECK)
+        if (u->state.rewind_af_dup_syn) {
+            tc_log_info(LOG_WARN, 0, "resp waiting af rewind dup syn:%d",
+                    ntohs(u->src_port));
+        }
+#endif
         send_diff = tc_time() - u->last_sent_time;
         if (send_diff > 3) {
             if (utimer_disp(u, clt_settings.sess_timeout, TYPE_ACT)) {
@@ -610,6 +635,12 @@ send_stop(tc_user_t *u, bool recent_sent)
         }
     }
 
+#if (TC_HIGH_PRESSURE_CHECK)
+    if (u->state.rewind_af_dup_syn) {
+        tc_log_info(LOG_WARN, 0, "check wait resp af rewind:%d",
+                ntohs(u->src_port));
+    }
+#endif
     app_resp_diff = tc_milliscond_time() - u->last_recv_resp_cont_time;
     if (app_resp_diff <= 10) {
         tc_log_debug1(LOG_DEBUG, 0, "need to wait resp complete:%d", 
@@ -619,6 +650,13 @@ send_stop(tc_user_t *u, bool recent_sent)
 
     tc_log_debug1(LOG_DEBUG, 0, "last resort, set stop false:%d", 
                 ntohs(u->src_port));
+
+#if (TC_HIGH_PRESSURE_CHECK)
+    if (u->state.rewind_af_dup_syn) {
+        tc_log_info(LOG_WARN, 0, "stop false af rewind dup syn:%d",
+                ntohs(u->src_port));
+    }
+#endif
 
     return false;
 }
@@ -780,6 +818,14 @@ tc_lantency_ctl(tc_event_timer_t *ev)
         u->state.set_rto = 0;
         tc_log_debug2(LOG_INFO, 0, "timer type:%u, ev:%llu", 
                 u->state.timer_type, ev); 
+
+#if (TC_HIGH_PRESSURE_CHECK)
+        if (u->state.rewind_af_dup_syn) {
+            tc_log_info(LOG_WARN, 0, "dispose evt af rewind af dup syn:%d",
+                    ntohs(u->src_port));
+        }
+#endif
+
         if (u->state.timer_type == TYPE_DELAY_ACK) {
             if (u->state.sess_continue) {
                 process_user_packet(u);
@@ -788,6 +834,12 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                 tc_delay_ack(u); 
             }
         } else if (u->state.timer_type == TYPE_ACT) {
+#if (TC_HIGH_PRESSURE_CHECK)
+            if (u->state.rewind_af_dup_syn) {
+                tc_log_info(LOG_WARN, 0, "activate af rewind af dup syn:%d",
+                        ntohs(u->src_port));
+            }
+#endif
             if (!u->state.timeout_set) {
                 pure_activate = true;
                 process_user_packet(u);
@@ -798,6 +850,12 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                         ntohs(u->src_port));
             }
         } else if (u->state.timer_type == TYPE_RTO) {
+#if (TC_HIGH_PRESSURE_CHECK)
+            if (u->state.rewind_af_dup_syn) {
+                tc_log_info(LOG_INFO, 0, "rto af rewind af dup syn:%d",
+                        ntohs(u->src_port));
+            }
+#endif
             if (u->state.snd_after_set_rto) {
                 if (utimer_disp(u, DEFAULT_RTO, TYPE_RTO)) {
                     u->state.snd_after_set_rto = 0;
@@ -809,7 +867,15 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                             ntohs(u->src_port));
                 }
             } else {
-                if (!(u->state.status & SYN_CONFIRM)) {
+                if ((!(u->state.status & SYN_CONFIRM)) || 
+                        u->state.rewind_af_dup_syn) 
+                {
+#if (TC_HIGH_PRESSURE_CHECK)
+                    if (u->state.rewind_af_dup_syn) {
+                        tc_log_info(LOG_INFO, 0, "proc pack af dup syn:%d",
+                                ntohs(u->src_port));
+                    }
+#endif
                     process_user_packet(u);
                 } else if (before(u->last_ack_seq, u->exp_seq)) {
                     retransmit(u, u->last_ack_seq);
@@ -984,6 +1050,7 @@ process_packet(tc_user_t *u, unsigned char *frame, bool hist_record)
     }
 
     if (cont_len > 0) {
+        u->state.rewind_af_dup_syn = 0;
         tc_stat.cont_sent_cnt++;
         u->state.status |= SEND_REQ;
         u->exp_seq = u->exp_seq + cont_len;
@@ -1078,9 +1145,9 @@ process_user_packet(tc_user_t *u)
 static void 
 send_faked_rst(tc_user_t *u)
 {
-    tc_iph_t   *ip;
-    tc_tcph_t  *tcp;
-    unsigned char    *p, frame[FAKE_FRAME_LEN];
+    tc_iph_t       *ip;
+    tc_tcph_t      *tcp;
+    unsigned char  *p, frame[FAKE_FRAME_LEN];
 
     memset(frame, 0, FAKE_FRAME_LEN);
     p = frame + ETHERNET_HDR_LEN;
@@ -1111,9 +1178,9 @@ send_faked_rst(tc_user_t *u)
 static void 
 send_faked_ack(tc_user_t *u)
 {
-    tc_iph_t   *ip;
-    tc_tcph_t  *tcp;
-    unsigned char    *p, frame[FAKE_FRAME_LEN];
+    tc_iph_t       *ip;
+    tc_tcph_t      *tcp;
+    unsigned char  *p, frame[FAKE_FRAME_LEN];
 
     memset(frame, 0, FAKE_FRAME_LEN);
     p = frame + ETHERNET_HDR_LEN;
@@ -1216,6 +1283,13 @@ update_ack_packets(tc_user_t *u, uint32_t cur_ack_seq)
         while (after(cur_ack_seq, u->orig_frame->seq)) {
             tc_log_debug1(LOG_DEBUG, 0, "rewind slide win:%u", 
                 ntohs(u->src_port));
+#if (TC_HIGH_PRESSURE_CHECK)
+            u->state.rewind_af_lack = 1;
+            if (u->state.rewind_af_dup_syn) {
+                tc_log_info(LOG_INFO, 0, "rewind seq:%u, cur_ack_seq:%u p:%u", 
+                        u->orig_frame->seq, cur_ack_seq, ntohs(u->src_port));
+            }
+#endif
             u->orig_frame = u->orig_frame->next;
             if (!u->orig_frame) {
                 break;
@@ -1431,14 +1505,24 @@ process_outgress(unsigned char *packet)
                 if (u->state.status & SYN_ACK) {
                     tc_log_debug1(LOG_DEBUG, 0, "third had been sent:%u",
                         ntohs(u->src_port));
+                    u->state.rewind_af_dup_syn = 1;
+#if (TC_HIGH_PRESSURE_CHECK)
+                    tc_log_info(LOG_INFO, 0, "rewind to fir payload frame:%u",
+                            ntohs(u->src_port));
+#endif
                     send_faked_ack(u);
                     u->orig_frame = u->orig_sess->first_payload_frame;
                     utimer_disp(u, u->rtt, TYPE_ACT);
                 }
             }
         } else if (tcp->fin) {
+#if (TC_HIGH_PRESSURE_CHECK && TC_COMET)
+            tc_log_info(LOG_INFO, 0, "recv fin from back:%u", 
+                    ntohs(u->src_port));
+#else
             tc_log_debug1(LOG_DEBUG, 0, "recv fin from back:%u", 
                     ntohs(u->src_port));
+#endif
             u->exp_ack_seq = htonl(ntohl(u->exp_ack_seq) + 1);
             u->state.status  |= SERVER_FIN;
             send_faked_ack(u);

@@ -116,7 +116,7 @@ typedef struct tc_buf_s         tc_buf_t;
 #define MIN_ACT_TIME_INTERVAL 1000
 #endif
 
-#define BREAK_NUM 50000
+#define BREAK_NUM 20000
 #define HALF_MILLION 500000
 #define MILLION 1000000
 

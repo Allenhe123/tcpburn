@@ -45,9 +45,13 @@ esac
 if [ $TC_DEBUG = YES ]; then
     have=TC_DEBUG . auto/have
     have=TC_DETECT_MEMORY . auto/have
+    have=TC_HIGH_PRESSURE_CHECK . auto/have
 else 
     if [ $TC_DETECT_MEMORY = YES ]; then
         have=TC_DETECT_MEMORY . auto/have
+    fi
+    if [ $TC_HIGH_PRESSURE_CHECK = YES ]; then
+        have=TC_HIGH_PRESSURE_CHECK . auto/have
     fi
 fi
 
