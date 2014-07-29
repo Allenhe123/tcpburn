@@ -1721,7 +1721,7 @@ release_user_resources()
                     j++;
                     k++;
                     if (j == thrsh) {
-                        usleep(1);
+                        usleep(100);
                         j = 0;
                     }
 
