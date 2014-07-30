@@ -13,7 +13,7 @@
 #define LOG_INFO              7
 #define LOG_DEBUG             8
 
-#define LOG_MAX_LEN        2048
+#define LOG_MAX_LEN 512
 
 int tc_log_init();
 void tc_log_end();

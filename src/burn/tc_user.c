@@ -25,7 +25,7 @@ static void retransmit(tc_user_t *u, uint32_t cur_ack_seq);
 static inline uint32_t 
 supplemental_hash(uint32_t value) 
 {
-    uint32_t h = 0;
+    uint32_t h;
     uint32_t tmp1 = value >> 20;
     uint32_t tmp2 = value >> 12;
     uint32_t tmp3 = tmp1 ^ tmp2;
@@ -122,7 +122,7 @@ tc_init_sess_for_users()
         return;
     }
 
-    ln    = NULL;
+    ln = NULL;
 
     for (i = 0; i < size_of_users; i++) {
         if (ln == NULL) {
@@ -244,7 +244,7 @@ tc_retrieve_sess(uint64_t key)
 {
     uint32_t h = supplemental_hash((uint32_t) key);
     uint32_t index = table_index(h, s_table->size);
-    p_sess_entry e = NULL, last = NULL;
+    p_sess_entry e, last = NULL;
 
     for(e = s_table->entries[index]; e != NULL; e = e->next) { 
         if (e->key == key) {   
@@ -434,14 +434,14 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
         return false;
     }
 
-    memset(stat, 0 ,sizeof(int) * size_of_user_index);
-    memset(slot_cnt, 0 ,sizeof(int) * size_of_user_index);
+    memset(stat, 0, sizeof(int) * size_of_user_index);
+    memset(slot_cnt, 0, sizeof(int) * size_of_user_index);
     memset(sub_keys, 0, sizeof(int) * size_of_users);
 
     if (!port_prioritized) {
         for (j = FIRST_PORT; j <= LAST_PORT; j++) {
             port = get_port(j);
-            for ( i = 0; i < num_ip; i++) {
+            for (i = 0; i < num_ip; i++) {
                 ip = ips[i];
 
                 key = tc_get_key(ip, port);
@@ -462,7 +462,7 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
         }
     } else {
 
-        for ( i = 0; i < num_ip; i++) {
+        for (i = 0; i < num_ip; i++) {
             ip = ips[i];
             for (j = FIRST_PORT; j <= LAST_PORT; j++) {
                 port = get_port(j);
@@ -494,11 +494,11 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
     }
 
     user_index_array[0].index = 0;
-    for ( i = 1; i < size_of_user_index; i++) {
+    for (i = 1; i < size_of_user_index; i++) {
         user_index_array[i].index = stat[i - 1] + user_index_array[i - 1].index;
     }
 
-    for ( i = 0; i < size_of_users; i++) {
+    for (i = 0; i < size_of_users; i++) {
         sub_key = sub_keys[i];
         if (sub_key > 0) {
             accum[i] = user_index_array[sub_key].index  + slot_cnt[sub_key];
@@ -781,7 +781,6 @@ update_timestamp(tc_user_t *u, tc_tcph_t *tcp)
                 break;
         }    
     }
-    return;
 }
 
 
@@ -1614,7 +1613,7 @@ could_start_sess(tc_user_t *u)
 void
 process_ingress()
 {
-    tc_user_t  *u = NULL;
+    tc_user_t  *u;
 
     u = tc_retrieve_active_user();
     

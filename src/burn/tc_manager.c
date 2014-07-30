@@ -84,10 +84,10 @@ static bool send_version(int fd) {
 static int
 connect_to_server(tc_event_loop_t *event_loop)
 {
-    int                    i, j, fd;
-    uint32_t               target_ip;
-    uint16_t               target_port;
-    connections_t         *connections;
+    int             i, j, fd;
+    uint32_t        target_ip;
+    uint16_t        target_port;
+    connections_t  *connections;
 
     /* 
      * add connections to the real servers for sending router info 
