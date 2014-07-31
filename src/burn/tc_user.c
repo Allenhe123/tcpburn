@@ -853,19 +853,20 @@ tc_topo_ignite(tc_user_t *u)
         if (could_start_sess(u, &diff)) {
             u->state.delayed = 0;
             process_user_packet(u);
-            u->state.already_ignite = 1;
             return true;
         } else {
             if (diff) {
                 utimer_disp(u, diff, TYPE_DELAY_IGNITE);
             } else {
-                tc_log_info(LOG_INFO, 0, "could not ignite");
+                utimer_disp(u, DEF_TOPO_WAIT, TYPE_DELAY_IGNITE);
+                tc_log_debug1(LOG_INFO, 0, "could not ignite:%llu", u->key);
             }
+            return false;
         }
+    } else {
+        process_user_packet(u);
+        return true;
     }
-
-    return false;
-
 }
 #endif
 
@@ -1674,10 +1675,7 @@ ignite_one_sess()
 #if (TC_TOPO)
     tc_topo_ignite(u);
 #else
-    if (!u->state.already_ignite) {
-        process_user_packet(u);
-        u->state.already_ignite = 1;
-    }
+    process_user_packet(u);
 #endif
 }
 

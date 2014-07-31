@@ -111,6 +111,8 @@ typedef struct tc_buf_s         tc_buf_t;
 #define TYPE_DELAY_IGNITE 4
 #define TYPE_DELAY_OVER 5
 
+#define DEF_TOPO_WAIT 10 
+
 #if (TC_COMET)
 #define MIN_ACT_TIME_INTERVAL 60000
 #define DEFAULT_RTO 1000
