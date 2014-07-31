@@ -93,6 +93,7 @@ typedef struct xcopy_clt_settings {
     unsigned int  client_mode:3;     
 
     unsigned int  target_localhost:1;
+    unsigned int  ignite_complete:1;
     unsigned int  do_daemonize:1;       /* daemon flag */
     unsigned int  percentage:7;         /* percentage of the full flow that 
                                            will be tranfered to the backend */
@@ -114,6 +115,7 @@ typedef struct xcopy_clt_settings {
 #endif
     int           valid_ip_num;              
     uint32_t      valid_ips[M_CLIENT_IP_NUM];              
+    uint32_t      sess_ms_timeout;
     int           users;
     int           throughput_factor;   
     int           accelerated_times;   

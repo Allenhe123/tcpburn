@@ -2,7 +2,6 @@
 #include <xcopy.h>
 #include <tc_user.h>
 
-static bool    init_phase       = true;
 static time_t  record_time      = 0;
 static time_t  last_resp_time   = 0;
 
@@ -11,10 +10,11 @@ static int size_of_users        = 0;
 static int base_user_seq        = 0;
 static int relative_user_seq    = 0;
 
-static tc_pool_t        *g_pool = NULL;
-static tc_user_index_t  *user_index_array = NULL;
-static tc_user_t        *user_array       = NULL;
-static sess_table_t     *s_table          = NULL;
+static tc_pool_t        *g_pool            = NULL;
+static tc_user_t        *user_array        = NULL;
+static tc_user_index_t  *user_index_array  = NULL;
+static sess_table_t     *s_table           = NULL;
+
 static bool utimer_disp(tc_user_t *u, int lty, int type);
 static bool process_packet(tc_user_t *, unsigned char *, bool);
 static bool process_user_packet(tc_user_t *u);
@@ -256,7 +256,7 @@ tc_retrieve_sess(uint64_t key)
 }
 
 static tc_user_t *
-tc_retrieve_active_user()
+tc_retr_user()
 {
     int        total, speed;
     time_t     cur;
@@ -268,11 +268,11 @@ tc_retrieve_active_user()
         record_time = cur;
     }
 
-    if (init_phase) {
+    if (!clt_settings.ignite_complete) {
         total = base_user_seq + relative_user_seq;
         if (total >= size_of_users) {
            tc_log_info(LOG_NOTICE, 0, "total is larger than size of users");
-           init_phase = false;
+           clt_settings.ignite_complete = true;
            u = user_array + 0;
            base_user_seq = 1 % size_of_users;
         } else {
@@ -287,7 +287,7 @@ tc_retrieve_active_user()
                     tc_log_debug0(LOG_NOTICE, 0, "change record time");
                     total = total + 1;
                     if (total == size_of_users) {
-                        init_phase = false;
+                        clt_settings.ignite_complete = true;
                         tc_log_info(LOG_NOTICE, 0, "set init phase false");
                     }
                 }
@@ -372,8 +372,6 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
         slot_avg = size_of_users;
     }
 
-    size_of_user_index = size_of_users / slot_avg;
-
     user_array = (tc_user_t *) tc_pcalloc (g_pool, 
             size_of_users * sizeof (tc_user_t));
     if (user_array == NULL) {
@@ -382,6 +380,7 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
         return false;
     }
 
+    size_of_user_index = size_of_users / slot_avg;
     user_index_array = (tc_user_index_t *) tc_pcalloc (g_pool, 
             size_of_user_index * sizeof(tc_user_index_t));
 
@@ -526,13 +525,28 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
 }
 
 
+static inline void 
+check_final_timeout_needed(tc_user_t *u)
+{
+    int send_diff = tc_time() - u->last_sent_time;
+    if (send_diff > 3) {
+        if (utimer_disp(u, clt_settings.sess_ms_timeout, TYPE_ACT)) {
+            u->state.timeout_set = 1;
+        }
+    }
+}
+
+
 static inline void
 record_session_over(tc_user_t *u) 
 {
+    u->state.over = 1;
+
     if (!u->state.over_recorded) {
         u->state.over_recorded = 1;
         tc_stat.active_conn_cnt--;
-        if (tc_stat.active_conn_cnt == 0) {
+        if (tc_stat.active_conn_cnt == 0 && !tc_over) {
+            tc_log_info(LOG_INFO, 0, "no active connection");
             tc_over = 1;
         }
     }
@@ -542,7 +556,6 @@ record_session_over(tc_user_t *u)
 static bool
 send_stop(tc_user_t *u, bool recent_sent) 
 {
-    int       send_diff;
     long      app_resp_diff;
     uint32_t  srv_sk_buf_s;
 
@@ -614,12 +627,7 @@ send_stop(tc_user_t *u, bool recent_sent)
                     ntohs(u->src_port));
         }
 #endif
-        send_diff = tc_time() - u->last_sent_time;
-        if (send_diff > 3) {
-            if (utimer_disp(u, clt_settings.sess_timeout, TYPE_ACT)) {
-                u->state.timeout_set = 1;
-            }
-        }
+        check_final_timeout_needed(u);
         return true;
     }
 
@@ -802,11 +810,69 @@ tc_delay_ack(tc_user_t *u)
 }
 
 
+#if (TC_TOPO)
+static bool 
+could_start_sess(tc_user_t *u, int *diff) 
+{
+    int diff1, diff2;
+
+    if (u->topo_prev != NULL) {
+        if (u->topo_prev->state.delayed) {
+            return false;
+        }
+
+        diff1 = (tc_time() - u->topo_prev->start_time) * 1000;
+        diff2 = u->topo_prev->orig_sess->first_pcap_time;
+        diff2 = u->orig_sess->first_pcap_time - diff2;
+
+        if (diff1 >= diff2) {
+            tc_log_debug2(LOG_INFO, 0, "cur:%llu activated, parent sess:%llu",
+                    u->key, u->topo_prev->key);
+            return true;
+        }
+
+        *diff = diff2 - diff1;
+
+        tc_log_debug4(LOG_INFO, 0, "cur:%llu unact, prt:%llu, df1:%d, df2:%d",
+                    u->key, u->topo_prev->key, diff1, diff2);
+        return false;
+
+    } else {
+        tc_log_info(LOG_ERR, 0, "topo previous sess is null");
+        return false;
+    }
+}
+
+
+static inline bool 
+tc_topo_ignite(tc_user_t *u)
+{
+    int diff = 0;
+
+    if (u->state.delayed) {
+        if (could_start_sess(u, &diff)) {
+            u->state.delayed = 0;
+            process_user_packet(u);
+            u->state.already_ignite = 1;
+            return true;
+        } else {
+            if (diff) {
+                utimer_disp(u, diff, TYPE_DELAY_IGNITE);
+            } else {
+                tc_log_info(LOG_INFO, 0, "could not ignite");
+            }
+        }
+    }
+
+    return false;
+
+}
+#endif
+
 static void 
 tc_lantency_ctl(tc_event_timer_t *ev) 
 {
     int        lantency;
-    bool       timer_set = false, pure_activate = false;
     uint32_t   exp_h_ack_seq;
     tc_user_t *u = ev->data;
 
@@ -824,87 +890,102 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                     ntohs(u->src_port));
         }
 #endif
-
-        if (u->state.timer_type == TYPE_DELAY_ACK) {
-            if (u->state.sess_continue) {
-                process_user_packet(u);
-                u->state.sess_continue = 0;
-            } else {
-                tc_delay_ack(u); 
-            }
-        } else if (u->state.timer_type == TYPE_ACT) {
-#if (TC_HIGH_PRESSURE_CHECK)
-            if (u->state.rewind_af_dup_syn) {
-                tc_log_info(LOG_WARN, 0, "activate af rewind af dup syn:%d",
-                        ntohs(u->src_port));
-            }
-#endif
-            if (!u->state.timeout_set) {
-                pure_activate = true;
-                process_user_packet(u);
-            } else {
-                send_faked_rst(u);
-                u->state.over = 1;
-                tc_log_debug1(LOG_INFO, 0, "timeout session:%u", 
-                        ntohs(u->src_port));
-            }
-        } else if (u->state.timer_type == TYPE_RTO) {
-#if (TC_HIGH_PRESSURE_CHECK)
-            if (u->state.rewind_af_dup_syn) {
-                tc_log_info(LOG_INFO, 0, "rto af rewind af dup syn:%d",
-                        ntohs(u->src_port));
-            }
-#endif
-            if (u->state.snd_after_set_rto) {
-                if (utimer_disp(u, DEFAULT_RTO, TYPE_RTO)) {
-                    u->state.snd_after_set_rto = 0;
-                    timer_set = true;
-                    tc_log_debug1(LOG_INFO, 0, "special rto:%u", 
-                            ntohs(u->src_port));
+        switch(u->state.timer_type) {
+            case TYPE_DELAY_ACK:
+                if (u->state.sess_continue) {
+                    process_user_packet(u);
+                    u->state.sess_continue = 0;
                 } else {
-                    tc_log_info(LOG_INFO, 0, "rto failure:%u", 
+                    tc_delay_ack(u); 
+                }
+                break;
+            case TYPE_ACT:
+#if (TC_HIGH_PRESSURE_CHECK)
+                if (u->state.rewind_af_dup_syn) {
+                    tc_log_info(LOG_WARN, 0, "activate af rewind af dup syn:%d",
                             ntohs(u->src_port));
                 }
-            } else {
-                if ((!(u->state.status & SYN_CONFIRM)) || 
-                        u->state.rewind_af_dup_syn) 
-                {
+#endif
+                if (!u->state.timeout_set) {
+                    process_user_packet(u);
+                } else {
+                    send_faked_rst(u);
+                    record_session_over(u);
+                    tc_log_debug1(LOG_INFO, 0, "timeout session:%u", 
+                            ntohs(u->src_port));
+                }
+                break;
+            case TYPE_RTO:
 #if (TC_HIGH_PRESSURE_CHECK)
-                    if (u->state.rewind_af_dup_syn) {
-                        tc_log_info(LOG_INFO, 0, "proc pack af dup syn:%d",
+                if (u->state.rewind_af_dup_syn) {
+                    tc_log_info(LOG_INFO, 0, "rto af rewind af dup syn:%d",
+                            ntohs(u->src_port));
+                }
+#endif
+                if (u->state.snd_after_set_rto) {
+                    if (utimer_disp(u, DEFAULT_RTO, TYPE_RTO)) {
+                        u->state.snd_after_set_rto = 0;
+                        tc_log_debug1(LOG_INFO, 0, "special rto:%u", 
+                                ntohs(u->src_port));
+                    } else {
+                        tc_log_info(LOG_INFO, 0, "rto failure:%u", 
                                 ntohs(u->src_port));
                     }
+                } else {
+                    if ((!(u->state.status & SYN_CONFIRM)) || 
+                            u->state.rewind_af_dup_syn) 
+                    {
+#if (TC_HIGH_PRESSURE_CHECK)
+                        if (u->state.rewind_af_dup_syn) {
+                            tc_log_info(LOG_INFO, 0, "proc pack af dup syn:%d",
+                                    ntohs(u->src_port));
+                        }
 #endif
-                    process_user_packet(u);
-                } else if (before(u->last_ack_seq, u->exp_seq)) {
-                    retransmit(u, u->last_ack_seq);
-                    tc_log_debug1(LOG_INFO, 0, "rto retrans:%u", 
-                            ntohs(u->src_port));
-                }    
-            }
-        } 
+                        process_user_packet(u);
+                    } else if (before(u->last_ack_seq, u->exp_seq)) {
+                        retransmit(u, u->last_ack_seq);
+                        tc_log_debug1(LOG_INFO, 0, "rto retrans:%u", 
+                                ntohs(u->src_port));
+                    }    
+                }
 
-        if (!(pure_activate && u->state.timeout_set)) {
-            u->state.timeout_set = 0;
-            if (!timer_set && !u->state.over) {
-                exp_h_ack_seq = ntohl(u->exp_ack_seq);
-                if (after(exp_h_ack_seq, u->last_snd_ack_seq)) {
-                    utimer_disp(u, u->rtt, TYPE_DELAY_ACK);
-                    tc_log_debug1(LOG_INFO, 0, "try to set delay ack timer:%u",
-                            ntohs(u->src_port));
-                } else if (u->orig_frame != NULL) {
-                    if (!u->state.resp_waiting) {
-                        lantency = u->orig_frame->time_diff;
-                        if (lantency < u->rtt) {
-                            lantency = u->rtt;
-                        }
+                break;
+            case TYPE_DELAY_OVER:
+                if (u->state.status & SERVER_FIN) {
+                    send_faked_rst(u);
+                }
+                break;
+#if (TC_TOPO)
+            case TYPE_DELAY_IGNITE:
+                tc_topo_ignite(u);
+                break;
+#endif
+            default:
+                tc_log_info(LOG_ERR, 0, "unknown timer type");
+        }
 
-                        if (lantency < MIN_ACT_TIME_INTERVAL) {
-                            lantency = MIN_ACT_TIME_INTERVAL;
-                        }
+        if (u->state.over) {
+            return;
+        }
 
-                        utimer_disp(u, lantency, TYPE_ACT);
+        if (!u->ev.timer_set) {
+            exp_h_ack_seq = ntohl(u->exp_ack_seq);
+            if (after(exp_h_ack_seq, u->last_snd_ack_seq)) {
+                utimer_disp(u, u->rtt, TYPE_DELAY_ACK);
+                tc_log_debug1(LOG_INFO, 0, "try to set delay ack timer:%u",
+                        ntohs(u->src_port));
+            } else if (u->orig_frame != NULL) {
+                if (!u->state.resp_waiting) {
+                    lantency = u->orig_frame->time_diff;
+                    if (lantency < u->rtt) {
+                        lantency = u->rtt;
                     }
+
+                    if (lantency < MIN_ACT_TIME_INTERVAL) {
+                        lantency = MIN_ACT_TIME_INTERVAL;
+                    }
+
+                    utimer_disp(u, lantency, TYPE_ACT);
                 }
             }
         }
@@ -1040,10 +1121,13 @@ process_packet(tc_user_t *u, unsigned char *frame, bool hist_record)
     } else if (tcp->fin) {
         tc_stat.fin_sent_cnt++;
         u->state.status  |= CLIENT_FIN;
+        if ((u->state.status & SESS_OVER_STATE)) {
+            record_session_over(u);
+        }
     } else if (tcp->rst) {
         tc_stat.rst_sent_cnt++;
         u->state.status  |= CLIENT_FIN;
-        u->state.over = 1;
+        record_session_over(u);
         tc_log_debug1(LOG_DEBUG, 0, "a reset packet to back:%u",
                 ntohs(u->src_port));
     }
@@ -1524,17 +1608,19 @@ process_outgress(unsigned char *packet)
 #endif
             u->exp_ack_seq = htonl(ntohl(u->exp_ack_seq) + 1);
             u->state.status  |= SERVER_FIN;
-            send_faked_ack(u);
             if (u->state.status & CLIENT_FIN) {
-                u->state.over = 1;
+                send_faked_ack(u);
+                record_session_over(u);
             } else {
 #if (TC_COMET)
+                send_faked_ack(u);
                 send_faked_rst(u);
 #else
                 if (u->orig_frame == NULL) {
                     send_faked_rst(u);
                 } else {
                     process_user_packet(u);
+                    utimer_disp(u, FIN_TIMEOUT, TYPE_DELAY_OVER);
                 }
 #endif
             }
@@ -1550,8 +1636,8 @@ process_outgress(unsigned char *packet)
                 }
             }
 
-            u->state.over = 1;
             u->state.status  |= SERVER_FIN;
+            record_session_over(u);
         }
 
     } else {
@@ -1577,75 +1663,22 @@ check_replay_complete()
 }
 
 
-#if (TC_TOPO)
-static bool 
-could_start_sess(tc_user_t *u) 
-{
-    int diff1, diff2;
-
-    if (u->topo_prev != NULL) {
-        if (u->topo_prev->state.delayed) {
-            return false;
-        }
-
-        diff1 = (tc_time() - u->topo_prev->start_time) * 1000;
-        diff2 = u->topo_prev->orig_sess->first_pcap_time;
-        diff2 = u->orig_sess->first_pcap_time - diff2;
-
-        if (diff1  >= diff2) {
-            tc_log_debug2(LOG_INFO, 0, "cur:%llu activated, parent sess:%llu",
-                    u->key, u->topo_prev->key);
-            return true;
-        }
-
-        tc_log_debug4(LOG_INFO, 0, "cur:%llu unact, prt:%llu, df1:%d, df2:%d",
-                    u->key, u->topo_prev->key, diff1, diff2);
-        return false;
-
-    } else {
-        tc_log_info(LOG_ERR, 0, "topo previous sess is null");
-        return false;
-    }
-}
-#endif
-
-
 void
-process_ingress()
+ignite_one_sess()
 {
     tc_user_t  *u;
 
-    u = tc_retrieve_active_user();
-    
+    u = tc_retr_user();
     tc_log_debug1(LOG_INFO, 0, "ingress user:%llu", u->key);
+
 #if (TC_TOPO)
-    if (u->state.delayed) {
-        if (could_start_sess(u)) {
-            u->state.delayed = 0;
-            tc_log_debug1(LOG_INFO, 0, "activate topo next:%llu ", u->key);
-        } else {
-            tc_log_debug1(LOG_INFO, 0, "delay user:%llu", u->key);
-            return;
-        }
+    tc_topo_ignite(u);
+#else
+    if (!u->state.already_ignite) {
+        process_user_packet(u);
+        u->state.already_ignite = 1;
     }
 #endif
-
-    if (!u->state.over) {
-        if (!u->state.already_ignite) {
-            process_user_packet(u);
-            u->state.already_ignite = 1;
-        }
-
-        if ((u->state.status & CLIENT_FIN) && 
-                (u->state.status & SERVER_FIN)) 
-        {
-            u->state.over = 1;
-        }
-    } else {
-        record_session_over(u);
-    }
-
-    check_replay_complete();
 }
 
 
@@ -1668,12 +1701,19 @@ output_stat()
             tc_stat.cont_sent_cnt);
 }
 
+
 void
 tc_interval_dispose(tc_event_timer_t *evt)
 {
     output_stat();
-    tc_event_update_timer(evt, 5000);
+
+    check_replay_complete();
+
+    if (!tc_over) {
+        tc_event_update_timer(evt, 5000);
+    }
 }
+
 
 void 
 release_user_resources()
@@ -1716,6 +1756,10 @@ release_user_resources()
                     }
                 }
                 if (u->state.status && !u->state.over) {
+#if (!TC_COMET && TC_HIGH_PRESSURE_CHECK)
+                    tc_log_info(LOG_NOTICE, 0, "sess state:%u,p:%u", 
+                            u->state.status, ntohs(u->src_port));
+#endif
                     send_faked_rst(u);
                     j++;
                     k++;

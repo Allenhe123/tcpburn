@@ -373,10 +373,12 @@ tc_process_packets(tc_event_timer_t *evt)
     int i = 0;
 
     for (; i < clt_settings.throughput_factor; i++) {
-        process_ingress();
+        ignite_one_sess();
     }
 
-    tc_event_update_timer(evt, 1);
+    if (!clt_settings.ignite_complete) {
+        tc_event_update_timer(evt, 1);
+    }
 }
 
 static uint64_t

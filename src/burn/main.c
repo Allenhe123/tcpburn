@@ -646,6 +646,7 @@ set_details()
         return -1;
     }
 
+    clt_settings.sess_ms_timeout = clt_settings.sess_timeout * 1000;
 #if (TC_TOPO)
     if (clt_settings.topo_time_diff <= 0) {
         clt_settings.topo_time_diff = 6000;

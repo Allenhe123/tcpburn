@@ -65,11 +65,12 @@ typedef struct tc_buf_s         tc_buf_t;
 #define MAX_REAL_SERVERS 256
 #define MAX_PCAP_FILES 1024
 
+#define DEFAULT_SESSION_TIMEOUT 75
 #define DEFAULT_TIMEOUT 120
+#define FIN_TIMEOUT 6000
 
 #define CHECK_INTERVAL  50
 #define OUTPUT_INTERVAL  5000
-#define DEFAULT_SESSION_TIMEOUT 120
 
 #define MAX_WRITE_TRIES 1024
 #define MAX_READ_LOG_TRIES 65536
@@ -107,6 +108,8 @@ typedef struct tc_buf_s         tc_buf_t;
 #define TYPE_DELAY_ACK 1
 #define TYPE_RTO 2
 #define TYPE_ACT 3
+#define TYPE_DELAY_IGNITE 4
+#define TYPE_DELAY_OVER 5
 
 #if (TC_COMET)
 #define MIN_ACT_TIME_INTERVAL 60000
@@ -169,6 +172,8 @@ enum packet_classification{
     TO_BAKEND_FLAG,
     UNKNOWN_FLAG
 };
+
+#define SESS_OVER_STATE (SERVER_FIN | CLIENT_FIN)
 
 #define ETHER_ADDR_STR_LEN 17
 

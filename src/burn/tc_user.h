@@ -49,7 +49,7 @@ typedef struct sess_table_s {
 
 typedef struct tc_user_state_s {
     uint32_t status:16;
-    uint32_t timer_type:2;
+    uint32_t timer_type:4;
 #if (TC_TOPO)
     uint32_t delayed:1;
 #endif
@@ -155,7 +155,7 @@ void tc_add_sess(p_sess_entry entry);
 p_sess_entry tc_retrieve_sess(uint64_t key);
 
 void process_outgress(unsigned char *packet);
-void process_ingress();
+void ignite_one_sess();
 void output_stat(); 
 void tc_interval_dispose(tc_event_timer_t *evt);
 void release_user_resources();
