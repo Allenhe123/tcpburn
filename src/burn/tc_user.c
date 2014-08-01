@@ -514,15 +514,18 @@ tc_build_users(int port_prioritized, int num_users, uint32_t *ips, int num_ip)
 }
 
 
-static inline void 
+static inline bool 
 check_final_timeout_needed(tc_user_t *u)
 {
     int send_diff = tc_time() - u->last_sent_time;
     if (send_diff > 3) {
         if (utimer_disp(u, clt_settings.sess_ms_timeout, TYPE_ACT)) {
             u->state.timeout_set = 1;
+            return true;
         }
     }
+
+    return false;
 }
 
 
@@ -859,10 +862,32 @@ tc_topo_ignite(tc_user_t *u)
 }
 #endif
 
+
+static void
+tc_set_activate_timer(tc_user_t *u) 
+{
+    int lantency, send_diff;
+
+    lantency  = u->orig_frame->time_diff;
+    send_diff = tc_time() - u->last_sent_time;
+
+    if (lantency < send_diff) {
+        check_final_timeout_needed(u);
+    }
+
+    if (!u->ev.timer_set) {
+        if (lantency < u->rtt) {
+            lantency = u->rtt;
+        }
+
+        utimer_disp(u, lantency, TYPE_ACT);
+    }
+}
+
+
 static void 
 tc_lantency_ctl(tc_event_timer_t *ev) 
 {
-    int        lantency;
     uint32_t   exp_h_ack_seq;
     tc_user_t *u = ev->data;
 
@@ -966,16 +991,7 @@ tc_lantency_ctl(tc_event_timer_t *ev)
                         ntohs(u->src_port));
             } else if (u->orig_frame != NULL) {
                 if (!u->state.resp_waiting) {
-                    lantency = u->orig_frame->time_diff;
-                    if (lantency < u->rtt) {
-                        lantency = u->rtt;
-                    }
-
-                    if (lantency < MIN_ACT_TIME_INTERVAL) {
-                        lantency = MIN_ACT_TIME_INTERVAL;
-                    }
-
-                    utimer_disp(u, lantency, TYPE_ACT);
+                    tc_set_activate_timer(u);
                 }
             }
         }

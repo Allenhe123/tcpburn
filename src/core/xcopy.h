@@ -114,11 +114,9 @@ typedef struct tc_buf_s         tc_buf_t;
 #define DEF_TOPO_WAIT 10 
 
 #if (TC_COMET)
-#define MIN_ACT_TIME_INTERVAL 60000
 #define DEFAULT_RTO 1000
 #else
 #define DEFAULT_RTO 100
-#define MIN_ACT_TIME_INTERVAL 1000
 #endif
 
 #define BREAK_NUM 20000
