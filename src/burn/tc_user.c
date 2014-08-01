@@ -256,11 +256,11 @@ tc_retrieve_sess(uint64_t key)
 }
 
 static tc_user_t *
-tc_retr_user()
+tc_retr_unignite_user()
 {
     int        total, speed;
     time_t     cur;
-    tc_user_t *u; 
+    tc_user_t *u = NULL; 
 
     cur = tc_time();
 
@@ -271,10 +271,8 @@ tc_retr_user()
     if (!clt_settings.ignite_complete) {
         total = base_user_seq + relative_user_seq;
         if (total >= size_of_users) {
-           tc_log_info(LOG_NOTICE, 0, "total is larger than size of users");
+           tc_log_info(LOG_NOTICE, 0, "ignite completely");
            clt_settings.ignite_complete = true;
-           u = user_array + 0;
-           base_user_seq = 1 % size_of_users;
         } else {
             u = user_array + total;
             speed = clt_settings.conn_init_sp_fact;
@@ -285,18 +283,9 @@ tc_retr_user()
                     base_user_seq += speed;
                     record_time = cur;
                     tc_log_debug0(LOG_NOTICE, 0, "change record time");
-                    total = total + 1;
-                    if (total == size_of_users) {
-                        clt_settings.ignite_complete = true;
-                        tc_log_info(LOG_NOTICE, 0, "set init phase false");
-                    }
                 }
             }
-
         }
-    } else {
-        u = user_array + base_user_seq;
-        base_user_seq = (base_user_seq + 1) % size_of_users;
     }
 
     return u;
@@ -1669,14 +1658,16 @@ ignite_one_sess()
 {
     tc_user_t  *u;
 
-    u = tc_retr_user();
-    tc_log_debug1(LOG_INFO, 0, "ingress user:%llu", u->key);
+    u = tc_retr_unignite_user();
 
+    if (u != NULL) {
+        tc_log_debug1(LOG_INFO, 0, "ingress user:%llu", u->key);
 #if (TC_TOPO)
-    tc_topo_ignite(u);
+        tc_topo_ignite(u);
 #else
-    process_user_packet(u);
+        process_user_packet(u);
 #endif
+    }
 }
 
 
