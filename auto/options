@@ -13,7 +13,6 @@ CC=${CC:-cc}
 TC_OBJS=objs
 
 TC_PCAP_SEND=NO
-TC_ADVANCED=YES
 TC_TOPO=NO
 TC_COMBINED=YES
 TC_SINGLE=NO
@@ -58,7 +57,6 @@ do
         --single)                        TC_SINGLE=YES             ;;
         --topology)                      TC_TOPO=YES               ;;
         --pcap-send)                     TC_PCAP_SEND=YES          ;;
-        --traditional)                   TC_ADVANCED=NO            ;;
         --disable-combined)              TC_COMBINED=NO            ;;
 
         --with-debug)                    TC_DEBUG=YES              ;;

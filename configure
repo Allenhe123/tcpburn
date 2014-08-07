@@ -71,11 +71,6 @@ if [ $TC_PCAP_SEND = YES ]; then
     have=TC_PCAP_SEND . auto/have
 fi
 
-
-if [ $TC_ADVANCED = YES ]; then
-    have=TC_ADVANCED . auto/have
-fi
-
 if [ $TC_COMBINED = YES ]; then
     have=TC_COMBINED . auto/have
 fi

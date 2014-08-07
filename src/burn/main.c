@@ -276,9 +276,6 @@ output_for_debug()
 #if (TC_COMET)
     tc_log_info(LOG_NOTICE, 0, "TC_COMET mode");
 #endif
-#if (TC_ADVANCED)
-    tc_log_info(LOG_NOTICE, 0, "TC_ADVANCED mode");
-#endif
 #if (TC_PCAP_SEND)
     tc_log_info(LOG_NOTICE, 0, "TC_PCAP_SEND mode");
 #endif
