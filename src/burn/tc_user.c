@@ -536,10 +536,12 @@ record_session_over(tc_user_t *u)
 
     if (!u->state.over_recorded) {
         u->state.over_recorded = 1;
-        tc_stat.active_conn_cnt--;
-        if (tc_stat.active_conn_cnt == 0 && !tc_over) {
-            tc_log_info(LOG_INFO, 0, "no active connection");
-            tc_over = 1;
+        if (tc_stat.active_conn_cnt > 0) {
+            tc_stat.active_conn_cnt--;
+            if (tc_stat.active_conn_cnt == 0 && !tc_over) {
+                tc_log_info(LOG_INFO, 0, "no active connection");
+                tc_over = 1;
+            }
         }
     }
 }
