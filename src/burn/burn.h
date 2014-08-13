@@ -125,6 +125,7 @@ typedef struct xcopy_clt_settings {
     int           num_pcap_files;       
     int           conn_init_sp_fact;
     long          pcap_time;
+    time_t        ignite_complete_time;
     pcap_t       *pcap;
 #if (TC_PCAP_SEND)
     char         *output_if_name;

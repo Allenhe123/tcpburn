@@ -273,6 +273,7 @@ tc_retr_unignite_user()
         if (total >= size_of_users) {
            tc_log_info(LOG_NOTICE, 0, "ignite completely");
            clt_settings.ignite_complete = true;
+           clt_settings.ignite_complete_time = cur;
         } else {
             u = user_array + total;
             speed = clt_settings.conn_init_sp_fact;
@@ -532,6 +533,7 @@ check_final_timeout_needed(tc_user_t *u)
 static inline void
 record_session_over(tc_user_t *u) 
 {
+    int diff;
     u->state.over = 1;
 
     if (!u->state.over_recorded) {
@@ -539,7 +541,8 @@ record_session_over(tc_user_t *u)
         if (tc_stat.active_conn_cnt > 0) {
             tc_stat.active_conn_cnt--;
             if (clt_settings.ignite_complete) {
-                if (tc_stat.active_conn_cnt == 0 && !tc_over) {
+                diff = tc_time() - clt_settings.ignite_complete_time;
+                if (diff >= 3 && tc_stat.active_conn_cnt == 0 && !tc_over) {
                     tc_log_info(LOG_INFO, 0, "no active connection");
                     tc_over = 1;
                 }
