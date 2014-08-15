@@ -96,7 +96,6 @@ cat << END
   --comet                            run tcpburn at comet mode
   --single                           run tcpburn at non-distributed mode
   --topology                         run tcpburn at topology mode
-  --traditional                      run tcpburn at traditional mode
   --pcap-send                        send packets at the data link 
   --disable-combined                 disable combined response mode        
 

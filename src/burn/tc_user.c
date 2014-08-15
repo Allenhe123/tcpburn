@@ -1698,18 +1698,18 @@ ignite_one_sess()
 void
 output_stat()
 {
-    tc_log_info(LOG_NOTICE, 0, "active conns:%llu", tc_stat.active_conn_cnt);
-    tc_log_info(LOG_NOTICE, 0, "reject:%llu, reset recv:%llu,fin recv:%llu",
+    tc_log_info(LOG_NOTICE, 0, "active conns:%d", tc_stat.active_conn_cnt);
+    tc_log_info(LOG_NOTICE, 0, "reject:%d, reset recv:%d,fin recv:%d",
             tc_stat.conn_reject_cnt, tc_stat.rst_recv_cnt, 
             tc_stat.fin_recv_cnt);
-    tc_log_info(LOG_NOTICE, 0, "reset sent:%llu, fin:%llu",
+    tc_log_info(LOG_NOTICE, 0, "reset sent:%d, fin:%d",
             tc_stat.rst_sent_cnt, tc_stat.fin_sent_cnt);
-    tc_log_info(LOG_NOTICE, 0, "retrans:%llu, syn retrans:%llu",
+    tc_log_info(LOG_NOTICE, 0, "retrans:%llu, syn retrans:%d",
             tc_stat.retransmit_cnt, tc_stat.retransmit_syn_cnt);
-    tc_log_info(LOG_NOTICE, 0, "conns:%llu,resp packs:%llu,c-resp packs:%llu",
+    tc_log_info(LOG_NOTICE, 0, "conns:%d,resp packs:%llu,c-resp packs:%llu",
             tc_stat.conn_cnt, tc_stat.resp_cnt, tc_stat.resp_cont_cnt);
     tc_log_info(LOG_NOTICE, 0, 
-            "syn sent cnt:%llu,clt packs sent:%llu,clt cont sent:%llu",
+            "syn sent cnt:%d,clt packs sent:%llu,clt cont sent:%llu",
             tc_stat.syn_sent_cnt, tc_stat.packs_sent_cnt, 
             tc_stat.cont_sent_cnt);
 }

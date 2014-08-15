@@ -126,19 +126,19 @@ typedef struct tc_user_index_s {
 }tc_user_index_t;
 
 typedef struct tc_stat_s {
-    uint64_t activated_sess_cnt; 
-    uint64_t fin_sent_cnt; 
-    uint64_t rst_sent_cnt; 
-    uint64_t conn_cnt; 
-    uint64_t conn_reject_cnt; 
-    uint64_t rst_recv_cnt; 
-    uint64_t fin_recv_cnt; 
+    int      activated_sess_cnt; 
+    int      fin_sent_cnt; 
+    int      rst_sent_cnt; 
+    int      conn_cnt; 
+    int      conn_reject_cnt; 
+    int      rst_recv_cnt; 
+    int      fin_recv_cnt; 
+    int      active_conn_cnt; 
+    int      syn_sent_cnt; 
+    int      retransmit_syn_cnt; 
+    uint64_t retransmit_cnt; 
     uint64_t resp_cnt; 
     uint64_t resp_cont_cnt; 
-    uint64_t active_conn_cnt; 
-    uint64_t syn_sent_cnt; 
-    uint64_t retransmit_cnt; 
-    uint64_t retransmit_syn_cnt; 
     uint64_t packs_sent_cnt; 
     uint64_t cont_sent_cnt; 
     uint64_t orig_clt_packs_cnt; 
