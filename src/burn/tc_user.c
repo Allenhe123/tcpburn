@@ -533,20 +533,12 @@ check_final_timeout_needed(tc_user_t *u)
 static inline void
 record_session_over(tc_user_t *u) 
 {
-    int diff;
     u->state.over = 1;
 
     if (!u->state.over_recorded) {
         u->state.over_recorded = 1;
         if (tc_stat.active_conn_cnt > 0) {
             tc_stat.active_conn_cnt--;
-            if (clt_settings.ignite_complete) {
-                diff = tc_time() - clt_settings.ignite_complete_time;
-                if (diff >= 3 && tc_stat.active_conn_cnt == 0 && !tc_over) {
-                    tc_log_info(LOG_INFO, 0, "no active connection");
-                    tc_over = 1;
-                }
-            }
         }
     }
 }
@@ -1129,6 +1121,10 @@ process_packet(tc_user_t *u, unsigned char *frame, bool hist_record)
 #endif
         u->state.last_ack_recorded = 0;
         u->state.status = SYN_SENT;
+        if (!u->state.sess_activated) {
+            u->state.sess_activated = 1;
+            tc_stat.activated_sess_cnt++;
+        }
 
     } else if (tcp->fin) {
         tc_stat.fin_sent_cnt++;
@@ -1665,8 +1661,14 @@ check_replay_complete()
 #if (!TC_COMET)
     int  diff;
 
-    if (last_resp_time) {
-        diff = tc_time() - last_resp_time;
+    if (tc_stat.activated_sess_cnt >= size_of_users) {
+
+        if (last_resp_time) {
+            diff = tc_time() - last_resp_time;
+        } else {
+            diff = tc_time() - record_time;
+        }
+
         if (diff > DEFAULT_TIMEOUT) {
             tc_over = 1;
         }

@@ -58,6 +58,7 @@ typedef struct tc_user_state_s {
     uint32_t timestamped:1;
     uint32_t resp_syn_received:1;
     uint32_t resp_waiting:1;
+    uint32_t sess_activated:1;
     uint32_t sess_continue:1;
     uint32_t last_ack_recorded:1;
     uint32_t evt_added:1;
@@ -125,6 +126,7 @@ typedef struct tc_user_index_s {
 }tc_user_index_t;
 
 typedef struct tc_stat_s {
+    uint64_t activated_sess_cnt; 
     uint64_t fin_sent_cnt; 
     uint64_t rst_sent_cnt; 
     uint64_t conn_cnt; 
